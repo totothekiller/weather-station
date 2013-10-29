@@ -1,0 +1,22 @@
+attiny85at1.name=ATtiny85 @ 1 MHz  (internal oscillator; BOD disabled)
+
+# The following DO work (pick one)...
+attiny85at1.upload.using=arduino:arduinoisp
+
+attiny85at1.upload.maximum_size=8192
+
+# Default clock (slowly rising power; long delay to clock; 8 MHz internal; divide clock by 8)
+# Int. RC Osc. 8 MHz; Start-up time PWRDWN/RESET: 6 CK/14 CK + 64 ms; [CKSEL=0010 SUT=10]; default value
+# Divide clock by 8 internally; [CKDIV8=0]
+# Brown-out detection disabled; [BODLEVEL=111]
+# Preserve EEPROM memory through the Chip Erase cycle; [EESAVE=0]
+
+attiny85at1.bootloader.low_fuses=0x62
+attiny85at1.bootloader.high_fuses=0xD7
+attiny85at1.bootloader.extended_fuses=0xFF
+attiny85at1.bootloader.path=empty
+attiny85at1.bootloader.file=empty85at1.hex
+
+attiny85at1.build.mcu=attiny85
+attiny85at1.build.f_cpu=1000000L
+attiny85at1.build.core=tiny
