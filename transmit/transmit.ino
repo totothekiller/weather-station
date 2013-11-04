@@ -9,39 +9,81 @@
 
 
 #include <VirtualWire.h>
+#include <OneWire.h>
+#include "ReadTempLib.h"
 
-int led1 = 3; // LED1
-int led2 = 4; // LED2
-int txPin = 0; // TX Out
+int txLed = 13; // TX LED
+int txPin = 12; // TX Out
+int sensPin = 7; // Sensor Pin
+uint8_t sensID = 42; // Sensor ID
+
+// Sensor Message Structure
+typedef struct sensorData_t{
+  byte id; // size 1
+  float value; // size 4
+};
+
+typedef union sensorData_union_t{
+  sensorData_t data;
+  uint8_t raw[5]; // total size of 5 bytes
+};
+
+// Sensor Message
+sensorData_union_t message; 
+
+// Sensor Library
+ReadTempLib sensor(sensPin);
 
 void setup()
 {
-  pinMode(led1, OUTPUT);
-  pinMode(led2, OUTPUT);
+  // Debug
+  Serial.begin(9600);
+  Serial.println("setup");
   
-  digitalWrite(led2, HIGH);   // sets the LED on
+  // Led Setup
+  pinMode(txLed, OUTPUT);
+
+  // TX Setup
+  vw_set_tx_pin(txPin);
+  vw_setup(2000);
   
-  vw_setup(2000);// Bits par seconde (vous pouvez le modifier mais cela modifiera la portée). Voir la documentation de la librairie VirtualWire.
-  vw_set_tx_pin(txPin);// Attiny pin 1 (with PWM)
-  
-  digitalWrite(led2, LOW);   // sets the LED on
+  // Write Sensor ID
+  message.data.id = sensID;
 }
 
 void loop()
 {
-  digitalWrite(led1, HIGH);   // sets the LED on
-  
-  const char *msg = "TTK is here";
+  digitalWrite(txLed, HIGH);
 
- 
-  vw_send((uint8_t *)msg, strlen(msg));
-  vw_wait_tx(); // Wait until the whole message is gone
+  // Read Temp
+  if ( sensor.acquireTemp())
+  {  
+    // set Temperature into message
+    message.data.value=sensor.getTemp();
+    
+    if(Serial)
+    {
+      Serial.print("Sensor=");
+      Serial.print(message.data.id);
+      Serial.print(", Temp=");
+      Serial.println(message.data.value);
+    }
+    
+    // Send
+    vw_send(message.raw, 5);
+    vw_wait_tx(); // Wait until the whole message is gone
+  }
 
 
+  digitalWrite(txLed, LOW);    // sets the LED off
 
-  digitalWrite(led1, LOW);    // sets the LED off
-  
   // Sleep
-  delay(1000);
+  delay(5000);
 }
+
+
+
+
+
+
 
