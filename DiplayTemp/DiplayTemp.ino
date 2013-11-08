@@ -1,29 +1,58 @@
 //
 // Display Temp
 //
+
+// Use Library from :
+// Adafruit BMP085 https://github.com/adafruit/Adafruit_BMP085_Unified
+// Adafruit Sensor https://github.com/adafruit/Adafruit_Sensor
+// Finite State Machine http://arduino-info.wikispaces.com/HAL-LibrariesUpdates
+// LCD : https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
+// Touch Sensor : https://github.com/arduino-libraries/CapacitiveSensor
+
 #include <VirtualWire.h>
 #include <Wire.h>
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 #include <CapacitiveSensor.h>
+#include <FiniteStateMachine.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085.h>
 
-#define I2C_ADDR 0x27 // <<----- Add your address here. Find it from I2C Scanner
-#define BACKLIGHT_PIN     3
-#define En_pin  2
-#define Rw_pin  1
-#define Rs_pin  0
-#define D4_pin  4
-#define D5_pin  5
-#define D6_pin  6
-#define D7_pin  7
+// LCD I2C Adress
+#define I2C_ADDR 0x27
 
+// LCD Static Config
+#define BACKLIGHT_PIN 3
+#define En_pin 2
+#define Rw_pin 1
+#define Rs_pin 0
+#define D4_pin 4
+#define D5_pin 5
+#define D6_pin 6
+#define D7_pin 7
 
-int rxLed = 13; // RX LED
-int rxPin = 11; // RX In
+#define BACKLIGHT_DURATION 10000
 
-LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+// Pin Configuration
+#define rxLed 13
+#define rxPin 11
+#define touchCommonPin 2
+#define touchSensPin 4
 
-CapacitiveSensor touch = CapacitiveSensor(2,4); 
+// Touch sensibility
+#define TOUCH_SENSIBILITY 100
+
+// Main sensor update
+#define MAIN_SENSOR_UPDATE 60000
+
+// LCD
+LiquidCrystal_I2C _lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+
+// Touched
+CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin); 
+
+// Athmospheric Sensor 
+Adafruit_BMP085 _bmp = Adafruit_BMP085(1234);
 
 // Sensor RX Data
 typedef struct sensorData_t{
@@ -36,11 +65,30 @@ typedef union sensorData_union_t{
   uint8_t raw[5]; // total size of 5 bytes
 };
 
-// RX message
-uint8_t message[VW_MAX_MESSAGE_LEN];
+// Main Sensor Definition
+typedef struct mainSensorDef_t {
+  float pressure;
+  float temp;
+};
 
-// LAst Touch
-unsigned long lastTouch;
+// Remote Sensor Defintion
+typedef struct remoteSensorDef_t {
+  char * name;
+  uint8_t id;
+  float temp;
+};
+
+// RX message
+uint8_t _message[VW_MAX_MESSAGE_LEN];
+
+// LCD State
+State _lcdHome = State(updateSensor);
+
+// Remote Sensors
+remoteSensorDef_t * _remoteSensors;
+
+// Last Touched
+unsigned long _lastTouch;
 
 void setup() {
   // Led Setup
@@ -48,51 +96,79 @@ void setup() {
 
   // Debug
   Serial.begin(9600);
-  Serial.println("setup");
+  Serial.println("--- TTK Weather Station ---");
 
   // Set Up RX
   vw_set_rx_pin(rxPin);
   vw_setup(2000);
 
   // Set Up LCD
-  lcd.begin (16,2); // <<----- My LCD was 16x2
-  // Switch on the backlight
-  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
-  lcd.setBacklight(HIGH);
-  lcd.home (); // go home
-
-    lcd.print("TTK is here !");
+  _lcd.begin (16,2); // 16x2 LCD
+  _lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+  _lcd.setBacklight(HIGH);
+  _lcd.home();
+  _lcd.print("--- Welcome ---");
 
   // Start the receiver
-  vw_rx_start();      
+  vw_rx_start();
+
+  // Initialise 
+  if(!_bmp.begin())
+  {
+    /* There was a problem detecting the BMP085 ... check your connections */
+    Serial.print("Ooops, no BMP085 detected ...");
+  }
+
+  // Remote sensore Static Def
+  _remoteSensors = new remoteSensorDef_t[2];
+
+  _remoteSensors[0].name="Sonde 1";
+  _remoteSensors[0].id=42;
+
+  _remoteSensors[0].name="Sonde 2";
+  _remoteSensors[0].id=69;
 }
 
 void loop() {
 
   // Turn the ligth ?
-  long touched =  touch.capacitiveSensor(30);
-  
+  long touched =  _touch.capacitiveSensor(30);
+
   unsigned long currentTime = millis();
-  
-  if(touched>100)
+
+  if(touched>=TOUCH_SENSIBILITY)
   {
     Serial.print("Touch ");
-     Serial.println(touched);   
-    lcd.setBacklight(HIGH); // Backlight on
-    lastTouch = currentTime;
+    Serial.println(touched);   
+    _lcd.setBacklight(HIGH); // Backlight on
+    _lastTouch = currentTime;
   }
-  else if( currentTime - lastTouch > 10000)
+  else if( currentTime - _lastTouch > BACKLIGHT_DURATION)
   {
-    lcd.setBacklight(LOW); // Backlight off
+    _lcd.setBacklight(LOW); // Backlight off
   }
 
-  // Wait Message (max 200ms)
-  if( vw_wait_rx_max(200))
+
+  updateSensor();
+
+  // Wait some time
+  delay(20);
+}
+
+
+/*
+ * Update all sensors
+ *
+ */
+void  updateSensor()
+{
+  // Message Received ?
+  if( vw_have_message())
   {
-    // message size
+    // max message size
     uint8_t messageLen = VW_MAX_MESSAGE_LEN;
 
-    if (vw_get_message(message, &messageLen)) // Read if OK
+    if (vw_get_message(_message, &messageLen)) // Read message
     {
       digitalWrite(rxLed, HIGH);
 
@@ -104,7 +180,7 @@ void loop() {
         // HEX DUMP
         for (int i = 0; i < messageLen; i++)
         {
-          Serial.print(message[i], HEX);
+          Serial.print(_message[i], HEX);
         }
         Serial.println("");
       }
@@ -117,7 +193,7 @@ void loop() {
 
         for (int k=0; k < 5; k++)
         { 
-          sensor.raw[k] = message[k];
+          sensor.raw[k] = _message[k];
         }
 
         Serial.print("Sensor=");
@@ -126,8 +202,8 @@ void loop() {
         Serial.println(sensor.data.value);
 
         // LCD
-        lcd.setCursor (0,1); // go to start of 2nd line
-        lcd.print(sensor.data.value);
+        _lcd.setCursor (0,1); // go to start of 2nd line
+        _lcd.print(sensor.data.value);
       } 
       else
       {
@@ -141,5 +217,11 @@ void loop() {
       digitalWrite(rxLed, LOW);
     }
   }
+
+
 }
+
+
+
+
 
