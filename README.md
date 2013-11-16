@@ -14,6 +14,8 @@ Parts :
 * RF transmitter 434 MHz
 
 
+![TX sensor](https://github.com/totothekiller/weather-station/raw/master/schematic/TX-Node.png)
+
 Base Station
 -------------------------
 
