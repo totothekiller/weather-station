@@ -14,106 +14,134 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
-#undef ECO // Power Saving On/Off ?
+#define ECO // Power Saving On/Off ?
 
-int setupLed = 3;
-int loopLed = 4;
+#define WATCHDOG_TIMER WDTO_8S // 8 sec
+#define SLEEP_LOOP  2 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
 
-volatile boolean isOn = true;
+int pinLed = 3;
 
+#ifdef ECO
+
+// WatchDof Counter
+volatile byte _watchdogCounter;
 
 // WatchDog interruption
-EMPTY_INTERRUPT(WDT_vect);
+ISR(WDT_vect) {
+  _watchdogCounter++;
+}
+
+#endif
 
 void setup() {
   // 
   // Setup
-  pinMode(setupLed,OUTPUT);
-  pinMode(loopLed,OUTPUT);
-  digitalWrite(setupLed,HIGH);
-  digitalWrite(loopLed,HIGH);
+  pinMode(pinLed,OUTPUT);
+  digitalWrite(pinLed,HIGH);
 
   delay(1000);
 
-
-#ifdef ECO
-  // Turn Off ADC
-  power_adc_disable();
-
-  // Turn Off USI
-  power_usi_disable();
-
-
-  // Setup WatchDog
-  setupWatchdog();
-#endif
-
-
-  digitalWrite(setupLed,LOW);
+  digitalWrite(pinLed,LOW);
 }
 
 void loop() {
-
-  if(isOn)
-  {
-    digitalWrite(loopLed,LOW);
-  }
-  else{
-    digitalWrite(loopLed,HIGH);
-  }
-
-  // Toggle
-  isOn=!isOn;
+  // Turn LED ON then OFF
+  digitalWrite(pinLed,HIGH);
+  delay(5000);
+  digitalWrite(pinLed,LOW);
 
   deepSleep();
 }
-
 
 
 void deepSleep()
 {
 #ifndef ECO
 
-  delay(8000);
+  delay(8000*SLEEP_LOOP);
 
 #else
+  
+  //
+  // Prepare for shutdown
+  
+  bitClear(ADCSRA,ADEN); //Disable ADC
+  //bitSet(PRR,PRADC); not working...
+  //power_adc_disable(); not working...
 
-  // Power Down
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  ACSR = (1<<ACD); //Disable the analog comparator
+  DIDR0 = 0x3F; //Disable digital input buffers on all ADC0-ADC5 pins
 
-  // Stop Interruption
-  cli();
+  PRR = 0x0F; //Reduce all power right before sleep
+  
+  
+  //
+  // Start Watchdog
+  setup_watchdog(WATCHDOG_TIMER);
+  
+  //
+  // Prepare for Sleep
+  
+  while(_watchdogCounter<SLEEP_LOOP){
+  
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN); // sleep mode
+  
+  noInterrupts();
   sleep_enable();
-  //sleep_bod_disable(); // Turn Off BOD
-
-  // Start interrupt then go to sleep !
-  sei();
-  sleep_cpu(); // Bye Bye
-
-  sleep_disable(); // Wake Up
+  // Disable BOD : my ATtiny85 doesn't have this fonctionality ...
+  interrupts();
+  
+  
+  sleep_cpu();                   // System sleeps here
+  sleep_disable();               // System continues execution here when watchdog timed out 
+  
+  } 
+  
+  //
+  // Stop WatchDog
+  setup_watchdog(-1);
+  
+  
+  // Restore Power
+  PRR = 0x00; //Restaure power reduction
 
 #endif
 }
 
 
 #ifdef ECO
-//setup the watchdog to timeout every 8 second and make an interrupt (not a reset!)
-void setupWatchdog(){
-  //README : must set the fuse WDTON to 0 to enable the watchdog
 
-    //disable interrupts
-  cli();
+//
+// From https://github.com/jcw/jeelib/blob/master/Ports.cpp
+// 
+void setup_watchdog(char mode) {
 
-  //make sure watchdod will be followed by a reset (must set this one to 0 because it resets the WDE bit)
-  MCUSR &= ~(1 << WDRF);
-  //set up WDT interrupt (from that point one have 4 cycle to modify WDTCSR)
-  WDTCR = (1<<WDCE)|(1<<WDE);
-  //Start watchdog timer with 1s prescaller and interrupt only
-  WDTCR = (1<<WDIE)|(0<<WDE)|(1<<WDP3)|(1<<WDP0);
+  // correct for the fact that WDP3 is *not* in bit position 3!
+  if (mode & bit(3))
+  { 
+    mode ^= bit(3) | bit(WDP3);
+  }
+  // pre-calculate the WDTCSR value, can't do it inside the timed sequence
+  // we only generate interrupts, no reset
+  byte wdtcsr = mode >= 0 ? bit(WDIE) | mode : 0;
+  
+  MCUSR &= ~(1<<WDRF);
 
-  //Enable global interrupts
-  sei();
+  noInterrupts();
+
+  WDTCR |= (1<<WDCE) | (1<<WDE); // timed sequence
+  WDTCR = wdtcsr;
+  
+  // Reset counter
+   _watchdogCounter=0;
+  
+  interrupts();
 }
+
+
+
 #endif
+
+
 
 
