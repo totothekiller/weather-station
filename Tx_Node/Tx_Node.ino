@@ -64,9 +64,6 @@ typedef union sensorData_union_t{
 // Sensor Message
 sensorData_union_t _message; 
 
-// OneWire protocol
-OneWire _wire(sensPin);
-
 // WatchDof Counter
 volatile byte _watchdogCounter;
 
@@ -130,6 +127,8 @@ void powerUp()
   // Power On
   pinMode(powerPin, OUTPUT);
   digitalWrite(powerPin,HIGH);
+  
+  delay(10);
 
   // Led Setup
   pinMode(txLed, OUTPUT);
@@ -150,6 +149,7 @@ void powerDown()
   pinMode(powerPin, INPUT);
   pinMode(txLed, INPUT);
   pinMode(txPin, INPUT);
+  pinMode(sensPin,INPUT);
 }
 
 
@@ -163,12 +163,15 @@ boolean acquireTemp()
   byte i;
   byte data[12];
   byte addr[8];
+  
+  // OneWire protocol
+  OneWire wire(sensPin);
 
   // Reset Search
-  _wire.reset_search();
+  wire.reset_search();
 
   // Get first sensor
-  if ( !_wire.search(addr)) {
+  if ( !wire.search(addr)) {
 #ifdef DEBUG
     Serial.println("No more addresses.");
 #endif
@@ -194,18 +197,18 @@ boolean acquireTemp()
     return false;
   }
 
-  _wire.reset();
-  _wire.select(addr);
-  _wire.write(0x44,1);// start conversion
+  wire.reset();
+  wire.select(addr);
+  wire.write(0x44,1);// start conversion
 
   delay(1000);     // maybe 750ms is enough, maybe not
 
-  _wire.reset();
-  _wire.select(addr);    
-  _wire.write(0xBE);// Read Scratchpad
+  wire.reset();
+  wire.select(addr);    
+  wire.write(0xBE);// Read Scratchpad
 
   for ( i = 0; i < 9; i++) {// we need 9 bytes
-    data[i] = _wire.read();
+    data[i] = wire.read();
   }
 
   // Convert the data to actual temperature
@@ -270,8 +273,8 @@ void deepSleep()
   setup_watchdog(-1);
   
   // Restore Power
-  PRR = 0x00; //Restaure power reduction
-
+  PRR = 0x00; //Restore power reduction
+  DIDR0 = 0x00; //Restore digital input buffers on all ADC0-ADC5 pins
 #endif
 }
 
