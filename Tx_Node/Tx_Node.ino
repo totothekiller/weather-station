@@ -46,7 +46,7 @@
 #endif
 
 #define WATCHDOG_TIMER WDTO_8S // 8 sec
-#define SLEEP_LOOP  2 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
+#define SLEEP_LOOP  30 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
 
 #define sensID 42  // Sensor ID
 
