@@ -46,49 +46,88 @@
 #define MAIN_SENSOR_UPDATE 60000
 
 // LCD
-LiquidCrystal_I2C _lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+//LiquidCrystal_I2C _lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
 
 // Touched
 CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin); 
 
 // Athmospheric Sensor 
-Adafruit_BMP085 _bmp = Adafruit_BMP085(1234);
+Adafruit_BMP085 _mainSensor = Adafruit_BMP085(0);
+
+// Sensor Defintion
+typedef struct SensorStruct {
+  char * name; 
+  uint8_t id; // Sensor ID
+  float value; 
+  char * unit; // Unit
+} SensorDefinition;
+
+// Rendering
+typedef struct RenderStruct {
+  LiquidCrystal_I2C lcd; // LCD
+  SensorDefinition * sensor; // Sensor to display
+  byte tick; // Used for transition
+} RenderDefinition;
 
 // Sensor RX Data
-typedef struct sensorData_t{
+typedef struct RxSensorDataStruct {
   byte id; // size 1
   float value; // size 4
-};
+} RxSensorDataDefinition;
 
-typedef union sensorData_union_t{
-  sensorData_t data;
+typedef union RxSensorRawDataStruc{
+  RxSensorDataDefinition decoded;
   uint8_t raw[5]; // total size of 5 bytes
+} RxSensorRawDataDefinition;
+
+// RX Message
+typedef struct ReceiverStruct {
+  uint8_t stream[VW_MAX_MESSAGE_LEN]; // Raw Rx Stream
+  RxSensorRawDataDefinition value; // Decoded Value
+} ReceiverDefinition;
+
+// Main Application Structure
+typedef struct ApplicationStruct {
+  byte nbrSensor;
+  SensorDefinition sensors[2]; // Sensors Definition
+  RenderDefinition render; // LCD rendering
+  ReceiverDefinition rx; // RX receiver
+  unsigned long lastTouched; // Last Touched time
+} ApplicationDefinition;
+
+// Static Definition
+ApplicationDefinition _app = {
+  2, // Total number of sensors
+  // Sensors
+  {
+    // Sensor #1
+    {
+      "Inside Temp",
+      0, // Sensor ID
+      -99.0, // Initial Value
+      "°C"
+    },
+    // Sensor #2
+    {
+      "Outside Temp",
+      42, // Sensor ID
+      -99.0, // Initial Value
+      "°C"
+    }
+  },
+    // Render
+  {
+    LiquidCrystal_I2C(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin)
+    // Init other field with 0
+  },
+  
+  // RX Reveiver
+  {
+    // Init array with 0
+  },
+  0 // last touched
 };
 
-// Main Sensor Definition
-typedef struct mainSensorDef_t {
-  float pressure;
-  float temp;
-};
-
-// Remote Sensor Defintion
-typedef struct remoteSensorDef_t {
-  char * name;
-  uint8_t id;
-  float temp;
-};
-
-// RX message
-uint8_t _message[VW_MAX_MESSAGE_LEN];
-
-// LCD State
-State _lcdHome = State(updateSensor);
-
-// Remote Sensors
-remoteSensorDef_t * _remoteSensors;
-
-// Last Touched
-unsigned long _lastTouch;
 
 void setup() {
   // Led Setup
@@ -103,30 +142,21 @@ void setup() {
   vw_setup(2000);
 
   // Set Up LCD
-  _lcd.begin (16,2); // 16x2 LCD
-  _lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
-  _lcd.setBacklight(HIGH);
-  _lcd.home();
-  _lcd.print("--- Welcome ---");
+  _app.render.lcd.begin (16,2); // 16x2 LCD
+  _app.render.lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+  _app.render.lcd.setBacklight(HIGH);
+  _app.render.lcd.home();
+  _app.render.lcd.print("--- Welcome ---");
 
   // Start the receiver
   vw_rx_start();
 
   // Initialise 
-  if(!_bmp.begin())
+  if(!_mainSensor.begin())
   {
     /* There was a problem detecting the BMP085 ... check your connections */
     Serial.print("Ooops, no BMP085 detected ...");
   }
-
-  // Remote sensore Static Def
-  _remoteSensors = new remoteSensorDef_t[2];
-
-  _remoteSensors[0].name="Sonde 1";
-  _remoteSensors[0].id=42;
-
-  _remoteSensors[0].name="Sonde 2";
-  _remoteSensors[0].id=69;
 }
 
 void loop() {
@@ -140,27 +170,65 @@ void loop() {
   {
     Serial.print("Touch ");
     Serial.println(touched);   
-    _lcd.setBacklight(HIGH); // Backlight on
-    _lastTouch = currentTime;
+    _app.render.lcd.setBacklight(HIGH); // Backlight on
+    _app.lastTouched = currentTime;
   }
-  else if( currentTime - _lastTouch > BACKLIGHT_DURATION)
+  else if( currentTime - _app.lastTouched > BACKLIGHT_DURATION)
   {
-    _lcd.setBacklight(LOW); // Backlight off
+    _app.render.lcd.setBacklight(LOW); // Backlight off
   }
 
+  // Check RX
+  checkIncomingData();
 
-  updateSensor();
+  // Paint
+  render();
 
   // Wait some time
   delay(20);
 }
 
 
-/*
- * Update all sensors
- *
- */
-void  updateSensor()
+
+//
+// LCD Render function
+//
+void render()
+{
+  // TODO annimation ?
+
+
+  // Display Sensor
+  if(_app.render.sensor!=NULL)
+  {
+    _app.render.lcd.home();
+    _app.render.lcd.print(_app.render.sensor->name);
+    _app.render.lcd.setCursor (0,1); // go to start of 2nd line
+    _app.render.lcd.print(_app.render.sensor->value);
+    _app.render.lcd.print(' ');
+    _app.render.lcd.print(_app.render.sensor->unit);
+
+
+    _app.render.sensor = NULL;
+  }
+
+}
+
+
+
+//
+// Diplay the Next Sensor
+//
+void selectNextSensor()
+{
+
+}
+
+
+//
+// Check if we have a unread message in the air
+//
+void checkIncomingData()
 {
   // Message Received ?
   if( vw_have_message())
@@ -168,7 +236,7 @@ void  updateSensor()
     // max message size
     uint8_t messageLen = VW_MAX_MESSAGE_LEN;
 
-    if (vw_get_message(_message, &messageLen)) // Read message
+    if (vw_get_message(_app.rx.stream, &messageLen)) // Read message
     {
       digitalWrite(rxLed, HIGH);
 
@@ -180,7 +248,7 @@ void  updateSensor()
         // HEX DUMP
         for (int i = 0; i < messageLen; i++)
         {
-          Serial.print(_message[i], HEX);
+          Serial.print(_app.rx.stream[i], HEX);
         }
         Serial.println("");
       }
@@ -189,21 +257,15 @@ void  updateSensor()
       if(messageLen>4)
       {
         // Convert Byte to Sensor Data
-        sensorData_union_t sensor;
+        //RxSensorRawDataDefinition sensor;
 
         for (int k=0; k < 5; k++)
         { 
-          sensor.raw[k] = _message[k];
+          _app.rx.value.raw[k] = _app.rx.stream[k];
         }
-
-        Serial.print("Sensor=");
-        Serial.print(sensor.data.id);
-        Serial.print(", Temp=");
-        Serial.println(sensor.data.value);
-
-        // LCD
-        _lcd.setCursor (0,1); // go to start of 2nd line
-        _lcd.print(sensor.data.value);
+        
+        // Fire this new value        
+        fireNewSensorValue(_app.rx.value.decoded.id, _app.rx.value.decoded.value);
       } 
       else
       {
@@ -218,10 +280,45 @@ void  updateSensor()
     }
   }
 
-
 }
 
 
+void fireNewSensorValue(byte sensorID, float newValue)
+{
+  Serial.print("Sensor=");
+  Serial.print(_app.rx.value.decoded.id);
+  Serial.print(", Value=");
+  Serial.println(_app.rx.value.decoded.value);
 
 
+  // Find in the sensor the SensorDefinition
+  for (int i = 0; i < (_app.nbrSensor); ++i)
+  {
+    if(_app.sensors[i].id==sensorID)
+    {
+      // Update value
+      _app.sensors[i].value = newValue;
+
+      // Render
+      _app.render.sensor = &_app.sensors[i];
+
+      // TODO Ethernet
+
+      break; // Exit loop
+    }
+  }
+}
+
+
+//
+// Update Local sensors
+//
+void updateLocalSensors()
+{
+
+  // Read Pression sensor
+
+  // Read Temp sensor
+
+}
 
