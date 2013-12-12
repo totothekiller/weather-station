@@ -5,7 +5,6 @@
 // Use Library from :
 // Adafruit BMP085 https://github.com/adafruit/Adafruit_BMP085_Unified
 // Adafruit Sensor https://github.com/adafruit/Adafruit_Sensor
-// Finite State Machine http://arduino-info.wikispaces.com/HAL-LibrariesUpdates
 // LCD : https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
 // Touch Sensor : https://github.com/arduino-libraries/CapacitiveSensor
 
@@ -14,7 +13,6 @@
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 #include <CapacitiveSensor.h>
-#include <FiniteStateMachine.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085.h>
 
@@ -31,11 +29,11 @@
 #define D6_pin 6
 #define D7_pin 7
 
-#define BACKLIGHT_DURATION 10000
+#define BACKLIGHT_DURATION 20000
 
 // Pin Configuration
-#define rxLed 13
-#define rxPin 11
+#define rxLed 6
+#define rxPin 7
 #define touchCommonPin 2
 #define touchSensPin 4
 
@@ -43,7 +41,7 @@
 #define TOUCH_SENSIBILITY 100
 
 // Main sensor update
-#define MAIN_SENSOR_UPDATE 60000
+#define MAIN_SENSOR_UPDATE 10000
 
 // LCD
 //LiquidCrystal_I2C _lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
@@ -52,7 +50,7 @@
 CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin); 
 
 // Athmospheric Sensor 
-Adafruit_BMP085 _mainSensor = Adafruit_BMP085(0);
+Adafruit_BMP085 _mainSensor = Adafruit_BMP085();
 
 // Sensor Defintion
 typedef struct SensorStruct {
@@ -65,8 +63,9 @@ typedef struct SensorStruct {
 // Rendering
 typedef struct RenderStruct {
   LiquidCrystal_I2C lcd; // LCD
-  SensorDefinition * sensor; // Sensor to display
+  byte  currentSensor; // Current sensor to display
   byte tick; // Used for transition
+  bool paint; // paint is in progress ?
 } RenderDefinition;
 
 // Sensor RX Data
@@ -88,16 +87,17 @@ typedef struct ReceiverStruct {
 
 // Main Application Structure
 typedef struct ApplicationStruct {
-  byte nbrSensor;
-  SensorDefinition sensors[2]; // Sensors Definition
+  byte nbrSensors;
+  SensorDefinition sensors[3]; // Sensors Definition
   RenderDefinition render; // LCD rendering
   ReceiverDefinition rx; // RX receiver
   unsigned long lastTouched; // Last Touched time
+  unsigned long lastMainSensorUpdated; // Last time that the main sensor was updated
 } ApplicationDefinition;
 
 // Static Definition
 ApplicationDefinition _app = {
-  2, // Total number of sensors
+  3, // Total number of sensors
   // Sensors
   {
     // Sensor #1
@@ -105,20 +105,29 @@ ApplicationDefinition _app = {
       "Inside Temp",
       0, // Sensor ID
       -99.0, // Initial Value
-      "°C"
+      "C"
     },
     // Sensor #2
     {
       "Outside Temp",
       42, // Sensor ID
       -99.0, // Initial Value
-      "°C"
+      "C"
+    },
+    // Sensor #3
+    {
+      "Pressure",
+      1, // Sensor ID
+      -99.0, // Initial Value
+      "hPa"
     }
   },
     // Render
   {
-    LiquidCrystal_I2C(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin)
-    // Init other field with 0
+    LiquidCrystal_I2C(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin),
+    0,
+    0,
+    true // force paint
   },
   
   // RX Reveiver
@@ -145,7 +154,7 @@ void setup() {
   _app.render.lcd.begin (16,2); // 16x2 LCD
   _app.render.lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
   _app.render.lcd.setBacklight(HIGH);
-  _app.render.lcd.home();
+  _app.render.lcd.clear();
   _app.render.lcd.print("--- Welcome ---");
 
   // Start the receiver
@@ -161,6 +170,29 @@ void setup() {
 
 void loop() {
 
+  // Detech user touch
+  detectTouch();
+
+  // Check RX
+  checkIncomingData();
+
+  // Update Local Sensor
+  updateLocalSensors();
+
+  // Paint
+  render();
+
+  // Wait some time
+  delay(20);
+
+}
+
+
+//
+// Touched Detection
+//
+void detectTouch()
+{
   // Turn the ligth ?
   long touched =  _touch.capacitiveSensor(30);
 
@@ -168,26 +200,32 @@ void loop() {
 
   if(touched>=TOUCH_SENSIBILITY)
   {
-    Serial.print("Touch ");
-    Serial.println(touched);   
-    _app.render.lcd.setBacklight(HIGH); // Backlight on
+    Serial.print("!! Touched !! with sensibility of ");Serial.println(touched);   
+
     _app.lastTouched = currentTime;
+
+    // Handle Event
+    onTouchEvent();
   }
   else if( currentTime - _app.lastTouched > BACKLIGHT_DURATION)
   {
-    _app.render.lcd.setBacklight(LOW); // Backlight off
+    // Backlight off
+    _app.render.lcd.setBacklight(LOW); 
   }
-
-  // Check RX
-  checkIncomingData();
-
-  // Paint
-  render();
-
-  // Wait some time
-  delay(20);
 }
 
+
+//
+// Handle touch Event
+//
+void onTouchEvent()
+{
+   // Backlight on
+    _app.render.lcd.setBacklight(HIGH);
+
+    // Display next sensor
+    selectNextSensor();
+}
 
 
 //
@@ -197,31 +235,40 @@ void render()
 {
   // TODO annimation ?
 
-
-  // Display Sensor
-  if(_app.render.sensor!=NULL)
+  // Paint ?
+  if(_app.render.paint)
   {
-    _app.render.lcd.home();
-    _app.render.lcd.print(_app.render.sensor->name);
+    Serial.print("Repaint sensor #");Serial.println(_app.render.currentSensor);
+
+    _app.render.lcd.clear();
+    _app.render.lcd.print(_app.sensors[_app.render.currentSensor].name);
     _app.render.lcd.setCursor (0,1); // go to start of 2nd line
-    _app.render.lcd.print(_app.render.sensor->value);
+    _app.render.lcd.print(_app.sensors[_app.render.currentSensor].value);
     _app.render.lcd.print(' ');
-    _app.render.lcd.print(_app.render.sensor->unit);
+    _app.render.lcd.print(_app.sensors[_app.render.currentSensor].unit);
 
-
-    _app.render.sensor = NULL;
+    // End of Paint
+   _app.render.paint = false;
   }
 
+
+  // Increment
+  _app.render.tick++;
 }
 
-
-
+ 
 //
 // Diplay the Next Sensor
 //
 void selectNextSensor()
 {
+  // Change current sensor
+  _app.render.currentSensor = (_app.render.currentSensor + 1) % _app.nbrSensors;
 
+  Serial.print("Select Next Sensor #");Serial.println(_app.render.currentSensor);
+
+  // Force Repaint
+  _app.render.paint = true;
 }
 
 
@@ -243,7 +290,7 @@ void checkIncomingData()
       // DEBUG
       if(Serial)
       {
-        Serial.print("Got: ");
+        Serial.print("RX incomming data : ");
 
         // HEX DUMP
         for (int i = 0; i < messageLen; i++)
@@ -285,22 +332,25 @@ void checkIncomingData()
 
 void fireNewSensorValue(byte sensorID, float newValue)
 {
-  Serial.print("Sensor=");
-  Serial.print(_app.rx.value.decoded.id);
-  Serial.print(", Value=");
-  Serial.println(_app.rx.value.decoded.value);
-
+  Serial.print("Sensor ID = ");Serial.print(sensorID);
+  Serial.print(", new value = ");Serial.println(newValue);
 
   // Find in the sensor the SensorDefinition
-  for (int i = 0; i < (_app.nbrSensor); ++i)
+  for (int i = 0; i < (_app.nbrSensors); ++i)
   {
     if(_app.sensors[i].id==sensorID)
     {
+      Serial.print(" -> sensor is #");Serial.println(i);
+
       // Update value
       _app.sensors[i].value = newValue;
 
-      // Render
-      _app.render.sensor = &_app.sensors[i];
+      // Repaint if we display the current value
+      if(i==_app.render.currentSensor)
+      {
+        _app.render.paint = true;
+        Serial.println(" -> Repaint is requested");
+      }
 
       // TODO Ethernet
 
@@ -315,10 +365,30 @@ void fireNewSensorValue(byte sensorID, float newValue)
 //
 void updateLocalSensors()
 {
+  // Get time
+  unsigned long currentTime = millis();
 
-  // Read Pression sensor
+  // Check if we have to update the main sensor
+  if(currentTime - _app.lastMainSensorUpdated > MAIN_SENSOR_UPDATE)
+  {
+    Serial.println("Update Local Sensor");
 
-  // Read Temp sensor
+    _app.lastMainSensorUpdated = currentTime;
 
+    float buffer;
+
+    // Read Temp sensor
+    _mainSensor.getTemperature(&buffer);
+
+    // Notify new Value
+    fireNewSensorValue(0,buffer);
+
+    // Read Pressure sensor (in Pa)
+    _mainSensor.getPressure(&buffer);
+
+    // Notify new Value (in hPa)
+    fireNewSensorValue(1,buffer/100);
+
+  }
 }
 
