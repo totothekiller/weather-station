@@ -17,6 +17,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BMP085.h>
 #include <EtherCard.h>
+#include <avr/wdt.h>
 
 // LCD I2C Adress
 #define I2C_ADDR 0x27
@@ -176,14 +177,16 @@ ApplicationDefinition _app = {
 
 
 void setup() {
+  //
+  // First Activate Watchdog
+  wdt_enable(WDTO_8S); // 8 sec
+  
   // Led Setup
   pinMode(rxLed, OUTPUT);
 
   // Debug
   Serial.begin(57600);
   Serial.println(F("--- TTK Weather Station ---"));
-  
-  displayFreeRam();
   
   // Set Up RX
   vw_set_rx_pin(rxPin);
@@ -212,9 +215,7 @@ void setup() {
   {
     Serial.println(F("Failed to access Ethernet controller"));
   }
-  
-  displayFreeRam();
-  
+    
   Serial.println(F("Setting up static IP"));
 
   // Static IP
@@ -242,10 +243,16 @@ void setup() {
   
   // No Request Yet
   _app.isHttpRequest = false;
+  
+  // Display Free RAM
+  displayFreeRam();
 }
 
 void loop() {
-
+  
+  // Restart Watchdog
+  wdt_reset();
+  
   // Detech user touch
   detectTouch();
 
