@@ -49,6 +49,9 @@
 // Main sensor update
 #define MAIN_SENSOR_UPDATE 60000
 
+// Timeout for HTTP Request
+#define HTTP_TIMEOUT 1000
+
 // Touched
 CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin); 
 
@@ -69,8 +72,6 @@ static byte _gwip[] = { 192, 168, 0, 254 };
 
 // Main Ethernet Buffer
 byte Ethernet::buffer[300];
-
-static BufferFiller _etherBuffFiller;  // used as cursor while filling the buffer
 
 // Page to display to user
 char _indexHTML[] PROGMEM =
@@ -101,7 +102,7 @@ typedef struct RenderStruct {
   LiquidCrystal_I2C lcd; // LCD
   byte  currentSensor; // Current sensor to display
   byte tick; // Used for transition
-  bool paint; // paint is in progress ?
+  volatile bool paint; // paint is in progress ?
 } RenderDefinition;
 
 // Sensor RX Data
@@ -121,20 +122,26 @@ typedef struct ReceiverStruct {
   RxSensorRawDataDefinition value; // Decoded Value
 } ReceiverDefinition;
 
+// Ethernet Structure
+typedef struct EthernetStruct {
+  BufferFiller buffer;  // used as cursor while filling the buffer
+  char url[15]; // HTTP dynamic URL
+  volatile boolean isHttpRequest; // true during HTTP request
+} EthernetDefinition;
+
 // Main Application Structure
 typedef struct ApplicationStruct {
   byte nbrSensors;
   SensorDefinition sensors[3]; // Sensors Definition
   RenderDefinition render; // LCD rendering
   ReceiverDefinition rx; // RX receiver
+  EthernetDefinition eth; // Ethernet
   unsigned long lastTouched; // Last Touched time
   unsigned long lastMainSensorUpdated; // Last time that the main sensor was updated
-  char url[20];
-  volatile boolean isHttpRequest; // true during HTTP request
 } ApplicationDefinition;
 
 // Static Definition
-ApplicationDefinition _app = {
+static ApplicationDefinition _app = {
   3, // Total number of sensors
   // Sensors
   {
@@ -172,7 +179,7 @@ ApplicationDefinition _app = {
   {
     // Init array with 0
   },
-  0 // last touched
+  // omit other fields -> init to 0
 };
 
 
@@ -222,27 +229,19 @@ void setup() {
   ether.staticSetup(_arduinoIP,_gwip);
 
   ether.printIp(F("My IP: "), ether.myip);
-  ether.printIp(F("Netmask: "), ether.mymask);
+  //ether.printIp(F("Netmask: "), ether.mymask);
   ether.printIp(F("GW IP: "), ether.gwip);
-  ether.printIp(F("DNS IP: "), ether.dnsip);
+  //ether.printIp(F("DNS IP: "), ether.dnsip);
   
   // Set Up destination IP
   ether.copyIp(ether.hisip, _ttkserver);
   ether.printIp(F("Destination Server: "), ether.hisip);
-  
-  // Wait Gatway
-  Serial.print(F("Gateway ..."));
-  while (ether.clientWaitingGw())
-  {
-    ether.packetLoop(ether.packetReceive());
-  }
-  Serial.println("found !");
-  
+    
   // Register Ping Callback
   ether.registerPingCallback(pingCallback);
   
   // No Request Yet
-  _app.isHttpRequest = false;
+  _app.eth.isHttpRequest = false;
   
   // Display Free RAM
   displayFreeRam();
@@ -444,41 +443,7 @@ void fireNewSensorValue(byte sensorID, float newValue)
   
   //
   // Send value to Web Server
-  
-  // Convert to String
-  sprintf(_app.url, "%d/", sensorID);
-
-  // Convert Float to String
-  char newValueString[10];
-  dtostrf(newValue, 2, 2, newValueString);
-  
-  strcat(_app.url,newValueString);
-  
-  Serial.print(F("Full path = "));Serial.println(_app.url);
-  
-  
-  _app.isHttpRequest = true;
-  
-   ether.browseUrl(PSTR("/cakephp/points/add/"), _app.url, PSTR("TTKSERVER"), requestUrlCallback);
-  
- 
-  //
-  // Wait end of HTTP Request
-  while(_app.isHttpRequest)
-  {
-      word len = ether.packetReceive();
-      word pos = ether.packetLoop(len);
-      //checkEthernet();
-  }
-  
-  Serial.println(F("End Of Request"));
-  
-  // Workaround to clean Ethernet ...
-  for(int i=0;i<100;i++)
-  {
-    word len = ether.packetReceive();
-    word pos = ether.packetLoop(len);
-  }
+  sendDataToWebServer(sensorID, newValue);
 }
 
 
@@ -527,17 +492,69 @@ void checkEthernet()
   if (pos) {
     
     // Init Buffer
-    _etherBuffFiller = ether.tcpOffset();
+    _app.eth.buffer = ether.tcpOffset();
 
     char* data = (char *) Ethernet::buffer + pos;
     Serial.println(F("Ethernet data received :"));
     Serial.println(data);
        
     // Populate Page to Buffer
-    _etherBuffFiller.emit_p(_indexHTML, millis());
+    _app.eth.buffer.emit_p(_indexHTML, millis());
     
-    ether.httpServerReply(_etherBuffFiller.position()); // send web page data
+    // send web page data
+    ether.httpServerReply(_app.eth.buffer.position()); 
   }
+}
+
+
+//
+// Send Data to WebServer
+//
+void sendDataToWebServer(byte sensorID, float newValue)
+{
+  // Convert to String
+  sprintf(_app.eth.url, "%d/", sensorID);
+
+  // Convert Float to String
+  char newValueString[10];
+  dtostrf(newValue, 2, 2, newValueString);
+  
+  strcat(_app.eth.url,newValueString);
+  
+  Serial.print(F("Begin HTTP Request = "));Serial.println(_app.eth.url);
+  
+  // Init Request
+  _app.eth.isHttpRequest = true;
+  unsigned long dateHTTPrequest = millis();
+  
+  ether.browseUrl(PSTR("/cakephp/points/add/"), _app.eth.url, PSTR("TTKSERVER"), requestUrlCallback);
+  
+  //
+  // Wait end of HTTP Request
+  while(millis() - dateHTTPrequest < HTTP_TIMEOUT && (  _app.eth.isHttpRequest || ether.clientWaitingGw()))
+  {
+    ether.packetLoop(ether.packetReceive());
+  }
+  
+  // Verify
+  if(_app.eth.isHttpRequest)
+  {
+    Serial.println(F("Fail Of HTTP Request"));
+    
+    // Reset Flag
+    _app.eth.isHttpRequest = false;
+  }
+  else
+  {
+    Serial.println(F("End Of HTTP Request"));
+  }
+  
+  // Workaround to clean Ethernet ...
+  for(int i=0;i<100;i++)
+  {
+    ether.packetLoop(ether.packetReceive());
+  }
+  
 }
 
 
@@ -549,25 +566,29 @@ static void pingCallback (byte* ptr) {
 }
 
 // 
-// End HTTP GET request
+// End HTTP GET request Callback
 //
-// called when the client request is complete
 static void requestUrlCallback (byte status, word off, word len) {
   Serial.println("<<< reply ");
   Serial.println((const char*) Ethernet::buffer + off);
   
-  _app.isHttpRequest = false; // Turn off HTTP request flag
+  // Turn off HTTP request flag
+  _app.eth.isHttpRequest = false; 
 }
 
 
+//
+// Get the Free RAM
 static int freeRam () {
   extern int __heap_start, *__brkval; 
   int v; 
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
 }
 
+//
+// Display to Serial the available RAM memory
 void displayFreeRam()
 {
-  Serial.print(F("Free Ram ="));Serial.println(freeRam());
+  Serial.print(F("Free Ram = "));Serial.println(freeRam());
 }
-  
+
