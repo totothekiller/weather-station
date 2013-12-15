@@ -84,7 +84,7 @@ char _indexHTML[] PROGMEM =
     "</title></head>"
     "<body>"
       "<h3>I am the Weather Station</h3>"
-      "<p>Up Time $D ms</p>"
+      "<p>Uptime is $D$D:$D$D:$D$D</p>"
     "</body>"
   "</html>"
 ;
@@ -283,7 +283,7 @@ void detectTouch()
 
   unsigned long currentTime = millis();
 
-  if(touched>=TOUCH_SENSIBILITY && currentTime - _app.lastTouched > TOUCH_DEBOUNCING)
+  if(touched >= TOUCH_SENSIBILITY && currentTime - _app.lastTouched > TOUCH_DEBOUNCING)
   {
     Serial.print(F("!! Touched !! with sensibility of "));Serial.println(touched);   
 
@@ -497,10 +497,16 @@ void checkEthernet()
     char* data = (char *) Ethernet::buffer + pos;
     Serial.println(F("Ethernet data received :"));
     Serial.println(data);
-       
-    // Populate Page to Buffer
-    _app.eth.buffer.emit_p(_indexHTML, millis());
     
+    // UpTime
+    long t = millis() / 1000;
+    word h = t / 3600;
+    byte m = (t / 60) % 60;
+    byte s = t % 60;
+    
+    // Populate Page to Buffer
+    _app.eth.buffer.emit_p(_indexHTML, h/10, h%10, m/10, m%10, s/10, s%10);
+        
     // send web page data
     ether.httpServerReply(_app.eth.buffer.position()); 
   }
@@ -531,7 +537,7 @@ void sendDataToWebServer(byte sensorID, float newValue)
   
   //
   // Wait end of HTTP Request
-  while(millis() - dateHTTPrequest < HTTP_TIMEOUT && (  _app.eth.isHttpRequest || ether.clientWaitingGw()))
+  while(millis() - dateHTTPrequest < HTTP_TIMEOUT && ( _app.eth.isHttpRequest || ether.clientWaitingGw() ))
   {
     ether.packetLoop(ether.packetReceive());
   }
