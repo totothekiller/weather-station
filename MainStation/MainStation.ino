@@ -132,7 +132,7 @@ typedef struct EthernetStruct {
 // Main Application Structure
 typedef struct ApplicationStruct {
   byte nbrSensors;
-  SensorDefinition sensors[3]; // Sensors Definition
+  SensorDefinition sensors[4]; // Sensors Definition
   RenderDefinition render; // LCD rendering
   ReceiverDefinition rx; // RX receiver
   EthernetDefinition eth; // Ethernet
@@ -142,29 +142,36 @@ typedef struct ApplicationStruct {
 
 // Static Definition
 static ApplicationDefinition _app = {
-  3, // Total number of sensors
+  4, // Total number of sensors
   // Sensors
   {
-    // Sensor #1
+    // Sensor #0
     {
       "Inside Temp",
       1, // Sensor ID
       -99.0, // Initial Value
       "C"
     },
-    // Sensor #2
+    // Sensor #1
     {
       "Outside Temp",
       42, // Sensor ID
       -99.0, // Initial Value
       "C"
     },
-    // Sensor #3
+    // Sensor #2
     {
       "Pressure",
       2, // Sensor ID
       -99.0, // Initial Value
       "hPa"
+    },
+    // Sensor #3
+    {
+      "Power",
+      5, // Sensor ID
+      -99.0, // Initial Value
+      "W"
     }
   },
     // Render
@@ -266,10 +273,7 @@ void loop() {
 
   // Paint
   render();
-
-  // Wait some time
-  //delay(20);
-
+  
 }
 
 
