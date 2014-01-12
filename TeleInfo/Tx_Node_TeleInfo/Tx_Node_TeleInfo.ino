@@ -28,7 +28,7 @@ sensorData_union_t _message;
 SoftwareSerial _edfLine(rxSerialPin, txSerialPin); // rx, tx pins
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(57600);
 
   _edfLine.begin(1200);
 
@@ -43,7 +43,7 @@ void loop() {
 
 /*
 *
- * Read Temp
+ * Acquire Apparent Power
  *
  */
 boolean acquireApparentPower()
@@ -53,67 +53,75 @@ boolean acquireApparentPower()
   char current;
   char buffer[50];
 
+  // Clear buffer
+  buffer[0] = '\0';
+
   while(!exit)
   {
-    // Read
-    current = _edfLine.read();
-
-    // Check Value
-    if(current>0)
+    // Wait a Char
+    if(_edfLine.available())
     {
+      // Read
+      current = _edfLine.read();
+
       // Clean Value
       current &=0x7F;  
-      
+
       // Display Raw
-      Serial.print("Raw :<");
-      Serial.write(current);
-      Serial.println('>');
+      //Serial.print("Raw :<"); Serial.write(current); Serial.println('>'); Serial.println(current,HEX);
 
       // Split String between LF and CR
-      if(current==0x0A)
+      if (current==0x0A)
       {
         // Begin new Information Line
-    
+
         // Turn Flag
         insideLine = true;
-        
+
         // Clear buffer
         buffer[0] = '\0';
       }
-      else if(current==0x0D)
+      else if (current==0x0D)
       {
         // End of Information Line
-        
+
         // Turn Off Flag
         insideLine = false;
-        
-        // TODO Analyse Line
-        Serial.print("Data :");Serial.println(buffer);
+
+        //Serial.print("Data : <"); Serial.print(buffer); Serial.println(">");
+
+        char * papp;
+        papp = strstr (buffer,"PAPP");
+
+        if(papp!=NULL)
+        {
+          // Remove CheckSum
+          papp[10] = '\0';
+
+          Serial.print("PAPP = <"); Serial.print(papp); Serial.println(">");
+
+          // Convert to Float
+          float value = atof(papp+5);
+
+          Serial.print("PAPP = <"); Serial.print(value); Serial.println(">");
+        }
+
       }
       else
       {
         // Data
         if(insideLine)
         {
-           // Add Char
-          strncpy (buffer, &current, 1);
+          // Add Char
+          strncat(buffer, &current, 1);
         }
       }
-
-
-
     }
-
-
-
   }
 
-
-
-
-
-
-
 }
+
+
+
 
 
