@@ -62,7 +62,7 @@ Adafruit_BMP085 _mainSensor = Adafruit_BMP085();
 static byte _mymac[] = {0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
 
 // remote website ip address and port
-static byte _ttkserver[] = { 192, 168, 0, 1 };
+static byte _webserver[] = { 192, 168, 0, 1 };
 
 // Arduino IP
 static byte _arduinoIP[] = { 192, 168, 0, 42 };
@@ -234,7 +234,7 @@ void setup() {
   //ether.printIp(F("DNS IP: "), ether.dnsip);
   
   // Set Up destination IP
-  ether.copyIp(ether.hisip, _ttkserver);
+  ether.copyIp(ether.hisip, _webserver);
   ether.printIp(F("Destination Server: "), ether.hisip);
     
   // Register Ping Callback
@@ -533,7 +533,7 @@ void sendDataToWebServer(byte sensorID, float newValue)
   _app.eth.isHttpRequest = true;
   unsigned long dateHTTPrequest = millis();
   
-  ether.browseUrl(PSTR("/cakephp/points/add/"), _app.eth.url, PSTR("TTKSERVER"), requestUrlCallback);
+  ether.browseUrl(PSTR("/riot-server/points/add/"), _app.eth.url, PSTR("localhost"), requestUrlCallback);
   
   //
   // Wait end of HTTP Request
