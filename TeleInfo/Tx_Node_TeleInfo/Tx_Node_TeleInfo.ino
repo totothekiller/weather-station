@@ -19,7 +19,7 @@
 #define ECO // Low Power Mode
 
 #define rxSerialPin 2  // RX PIN for Software Serial
-#define txSerialPin 3  // TX PIN for Software Serial
+#define txSerialPin -1  // TX PIN for Software Serial (unused)
 
 #define txLed 3  // TX LED
 #define txPin 1  // TX Out
@@ -29,16 +29,17 @@
 #define DEBUG  // Is serial debug active ?
 
 #define rxSerialPin 2  // RX PIN for Software Serial
-#define txSerialPin 3  // TX PIN for Software Serial
+#define txSerialPin -1  // TX PIN for Software Serial (unused)
 
 #define txLed 13  // TX LED
 #define txPin 12  // TX Out
-#define powerPin 14 // Power line for Tx module and sensor
+#define powerPin 8 // Power line for Tx module and sensor
 
 #endif
 
 #define WATCHDOG_TIMER WDTO_8S // 8 sec
 #define SLEEP_LOOP  2 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
+#define LINK_TIMEOUT 10000 // Link TimeOut
 
 #define sensID 5  // Sensor ID
 
@@ -58,7 +59,7 @@ typedef union sensorData_union_t{
 sensorData_union_t _message; 
 
 // EDF Link
-SoftwareSerial _edfLine(rxSerialPin, txSerialPin); // rx, tx pins
+SoftwareSerial _edfLink(rxSerialPin, txSerialPin); // rx, tx pins
 
 // WatchDof Counter
 volatile byte _watchdogCounter;
@@ -70,15 +71,12 @@ ISR(WDT_vect) {
 
 void setup() {
   
-    // Debug
+  // Debug
 #ifdef DEBUG
   Serial.begin(57600);
   Serial.println("--- SETUP ---");
 #endif
 
-  // Start Serial with EDF box
-  _edfLine.begin(1200);
-  
   // Write Sensor ID
   _message.data.id = sensID;
 }
@@ -95,11 +93,11 @@ void loop()
     digitalWrite(txLed, HIGH);
 
 #ifdef DEBUG
-    Serial.print("Sensor="); 
-    Serial.print(_message.data.id); 
-    Serial.print(", Value="); 
-    Serial.println(_message.data.value);
+    Serial.print("Sensor="); Serial.print(_message.data.id); Serial.print(", Value="); Serial.println(_message.data.value);
 #endif
+
+    // End Serial
+    _edfLink.end();
 
     // Send
     vw_send(_message.raw, 5); // Send Raw message (size = 5 bytes)
@@ -129,16 +127,20 @@ boolean acquireApparentPower()
   char current;
   char buffer[40];
 
+  // Get Current Date
+  unsigned long start = millis();
+
   // Clear buffer
   buffer[0] = '\0';
-
-  while(!exit)
+  
+  // Loop
+  while (millis() - start < LINK_TIMEOUT && !exit)
   {
-    // Wait a Char
-    if(_edfLine.available())
+    // OK to read ?
+    if(_edfLink.available())
     {
       // Read
-      current = _edfLine.read();
+      current = _edfLink.read();
 
       // Clean Value
       current &=0x7F;  
@@ -167,7 +169,8 @@ boolean acquireApparentPower()
 #ifdef DEBUG
         //Serial.print("Data : <"); Serial.print(buffer); Serial.println(">");
 #endif
-
+        
+        // Find PAPP value in line : ex PAPP 00450 *
         char * papp;
         papp = strstr(buffer,"PAPP");
 
@@ -181,7 +184,6 @@ boolean acquireApparentPower()
 
 #ifdef DEBUG
           Serial.print("PAPP = <"); Serial.print(papp); Serial.println(">");
-          Serial.print("PAPP = <"); Serial.print(value); Serial.println(">");
 #endif
 
             // Save Power
@@ -204,6 +206,10 @@ boolean acquireApparentPower()
     }
   }
 
+#ifdef DEBUG
+  Serial.println("Link TimeOut");
+#endif
+
   return false;
 }
 
@@ -220,6 +226,9 @@ void powerUp()
 
   // Led Setup
   pinMode(txLed, OUTPUT);
+
+  // Start Serial with EDF box
+  _edfLink.begin(1200);
 
   // TX Setup
   vw_set_tx_pin(txPin);
