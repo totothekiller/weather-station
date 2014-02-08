@@ -55,21 +55,14 @@ attiny85at8.build.core=tiny
 
 attiny85at8b.name=ATtiny85 @ 8 MHz  (INT OSC + BOD 2.7V)
 
-# The following do NOT work...
-# attiny85at8b.upload.using=avrispv2
-# attiny85at8b.upload.using=Pololu USB AVR Programmer
-
-# The following DO work (pick one)...
 attiny85at8b.upload.using=arduino:arduinoisp
-# attiny85at8b.upload.protocol=avrispv2
-# attiny85at8b.upload.using=pololu
-
 attiny85at8b.upload.maximum_size=8192
 
 # Default clock (slowly rising power; long delay to clock; 8 MHz internal)
 # Int. RC Osc. 8 MHz; Start-up time PWRDWN/RESET: 6 CK/14 CK + 64 ms; [CKSEL=0010 SUT=10]; default value
 # Brown-out detection Activated at VCC 2.7V ; [BODLEVEL=101]
 # Preserve EEPROM memory through the Chip Erase cycle; [EESAVE=0]
+# Serial program downloading (SPI) enabled; [SPIEN=0]
 
 attiny85at8b.bootloader.low_fuses=0xE2
 attiny85at8b.bootloader.high_fuses=0xD5
@@ -80,3 +73,25 @@ attiny85at8b.bootloader.file=empty85at8.hex
 attiny85at8b.build.mcu=attiny85
 attiny85at8b.build.f_cpu=8000000L
 attiny85at8b.build.core=tiny
+
+###########################################################################
+
+attiny85at8e.name=ATtiny85 @ 8 MHz  (external crystal; 2.7 V BOD)
+
+attiny85at8e.upload.using=arduino:arduinoisp
+attiny85at8e.upload.maximum_size=8192
+
+# Ext. Crystal Osc.; Frequency 8.0- MHz; Start-up time PWRDWN/RESET: 16K CK/14 CK + 65 ms; [CKSEL=1111 SUT=11]
+# Brown-out detection level at VCC=2.7 V; [BODLEVEL=101]
+# Preserve EEPROM memory through the Chip Erase cycle; [EESAVE=0]
+# Serial program downloading (SPI) enabled; [SPIEN=0]
+
+attiny85at8e.bootloader.low_fuses=0xFF
+attiny85at8e.bootloader.high_fuses=0xD5
+attiny85at8e.bootloader.extended_fuses=0xFF
+attiny85at8e.bootloader.path=empty
+attiny85at8e.bootloader.file=empty85at8.hex
+
+attiny85at8e.build.mcu=attiny85
+attiny85at8e.build.f_cpu=8000000L
+attiny85at8e.build.core=tiny
