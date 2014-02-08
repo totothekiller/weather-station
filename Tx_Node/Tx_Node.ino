@@ -6,10 +6,7 @@
 
 // Info : 
 // Snootlab : http://forum.snootlab.com/viewtopic.php?f=38&t=399
-// Virtual Wire library : 
-// http://www.airspayce.com/mikem/arduino/VirtualWire/VirtualWire_8h.html
-// http://www.pjrc.com/teensy/td_libs_VirtualWire.html
-//
+// 
 //
 // Low Power Sleep :
 //
@@ -19,7 +16,7 @@
 // http://oregonembedded.com/batterycalc.htm
 
 
-#include <VirtualWire.h>
+#include <Manchester.h>
 #include <OneWire.h>
 #include <avr/wdt.h>
 #include <avr/power.h>
@@ -42,6 +39,7 @@
 #define txLed 13  // TX LED
 #define txPin 12  // TX Out
 #define sensPin 7  // Sensor Pin
+#define powerPin 8 // Power line for Tx module and sensor
 #define powerPin 14 // Power line for Tx module and sensor
 #endif
 
@@ -52,13 +50,14 @@
 
 // Sensor Message Structure
 typedef struct sensorData_t{
-  byte id; // size 1
+  uint8_t id; // size 1
   float value; // size 4
+  uint8_t checksum; // size 1
 };
 
 typedef union sensorData_union_t{
   sensorData_t data;
-  uint8_t raw[5]; // total size of 5 bytes
+  uint8_t raw[6]; // total size of 6 bytes
 };
 
 // Sensor Message
@@ -95,17 +94,21 @@ void loop()
   {  
     // Turn LED On
     digitalWrite(txLed, HIGH);
-
+    
+    // Compute Checksum : CRC8 on ID+Value
+    _message.data.checksum = OneWire::crc8(_message.raw, 5);
+    
 #ifdef DEBUG
     Serial.print("Sensor="); 
     Serial.print(_message.data.id); 
     Serial.print(", Temp="); 
-    Serial.println(_message.data.value);
+    Serial.print(_message.data.value);
+    Serial.print(", CheckSum="); 
+    Serial.println(_message.data.checksum);
 #endif
-
-    // Send
-    vw_send(_message.raw, 5); // Send Raw message (size = 5 bytes)
-    vw_wait_tx(); // Wait until the whole message is gone
+  
+    // Send All Data
+    man.transmitArray(6, _message.raw);
   }
 
   // sets the LED off
@@ -134,8 +137,7 @@ void powerUp()
   pinMode(txLed, OUTPUT);
 
   // TX Setup
-  vw_set_tx_pin(txPin);
-  vw_setup(2000); // Transmition speed
+  man.setupTransmit(txPin);
 }
 
 //

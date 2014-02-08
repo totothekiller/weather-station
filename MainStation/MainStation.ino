@@ -9,7 +9,7 @@
 // Touch Sensor : https://github.com/arduino-libraries/CapacitiveSensor
 // Ethercard : https://github.com/jcw/ethercard
 
-#include <VirtualWire.h>
+#include <Manchester.h>
 #include <Wire.h>
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
@@ -47,7 +47,7 @@
 #define TOUCH_DEBOUNCING 250
 
 // Main sensor update
-#define MAIN_SENSOR_UPDATE 60000
+#define MAIN_SENSOR_UPDATE 240000
 
 // Timeout for HTTP Request
 #define HTTP_TIMEOUT 1000
@@ -107,20 +107,15 @@ typedef struct RenderStruct {
 
 // Sensor RX Data
 typedef struct RxSensorDataStruct {
-  byte id; // size 1
+  uint8_t id; // size 1
   float value; // size 4
+  uint8_t checksum; // size 1
 } RxSensorDataDefinition;
 
 typedef union RxSensorRawDataStruc{
   RxSensorDataDefinition decoded;
-  uint8_t raw[5]; // total size of 5 bytes
+  uint8_t raw[6]; // total size of 6 bytes
 } RxSensorRawDataDefinition;
-
-// RX Message
-typedef struct ReceiverStruct {
-  uint8_t stream[VW_MAX_MESSAGE_LEN]; // Raw Rx Stream
-  RxSensorRawDataDefinition value; // Decoded Value
-} ReceiverDefinition;
 
 // Ethernet Structure
 typedef struct EthernetStruct {
@@ -134,7 +129,7 @@ typedef struct ApplicationStruct {
   byte nbrSensors;
   SensorDefinition sensors[4]; // Sensors Definition
   RenderDefinition render; // LCD rendering
-  ReceiverDefinition rx; // RX receiver
+  RxSensorRawDataDefinition rx; // RX receiver
   EthernetDefinition eth; // Ethernet
   unsigned long lastTouched; // Last Touched time
   unsigned long lastMainSensorUpdated; // Last time that the main sensor was updated
@@ -203,8 +198,7 @@ void setup() {
   Serial.println(F("--- TTK Weather Station ---"));
   
   // Set Up RX
-  vw_set_rx_pin(rxPin);
-  vw_setup(2000);
+  man.setupReceive(rxPin);
 
   // Set Up LCD
   _app.render.lcd.begin (16,2); // 16x2 LCD
@@ -213,8 +207,8 @@ void setup() {
   _app.render.lcd.clear();
   _app.render.lcd.print(F("--- Welcome ---"));
 
-  // Start the receiver
-  vw_rx_start();
+  // Start Receiving
+  man.beginReceiveArray(6, _app.rx.raw);
 
   // Initialise 
   if(!_mainSensor.begin())
@@ -367,55 +361,51 @@ void selectNextSensor()
 void checkIncomingData()
 {
   // Message Received ?
-  if( vw_have_message())
+  if(man.receiveComplete())
   {
-    // max message size
-    uint8_t messageLen = VW_MAX_MESSAGE_LEN;
-
-    if (vw_get_message(_app.rx.stream, &messageLen)) // Read message
+    digitalWrite(rxLed, HIGH);
+  
+    // DEBUG
+    if(Serial)
     {
-      digitalWrite(rxLed, HIGH);
-
-      // DEBUG
+      Serial.print(F("RX incomming data : "));
+  
+      // HEX DUMP
+      for (int i = 0; i < 6; i++)
+      {
+        Serial.print(_app.rx.raw[i], HEX);
+      }
+      Serial.println("");
+    }
+  
+    // Checksum Validation
+    uint8_t checksum = crc8(_app.rx.raw,6);
+    
+    if(checksum==0)
+    {
+      // Fire this new value        
+      fireNewSensorValue(_app.rx.decoded.id, _app.rx.decoded.value);
+    } 
+    else
+    {
+     // DEBUG
       if(Serial)
       {
-        Serial.print(F("RX incomming data : "));
-
-        // HEX DUMP
-        for (int i = 0; i < messageLen; i++)
-        {
-          Serial.print(_app.rx.stream[i], HEX);
-        }
-        Serial.println("");
+        Serial.print(F("Bad CheckSum :"));
+        Serial.println(checksum, HEX);
       }
-
-      // Check size
-      if(messageLen>4)
-      {
-        // Convert Byte to Sensor Data
-        //RxSensorRawDataDefinition sensor;
-
-        for (int k=0; k < 5; k++)
-        { 
-          _app.rx.value.raw[k] = _app.rx.stream[k];
-        }
-        
-        // Fire this new value        
-        fireNewSensorValue(_app.rx.value.decoded.id, _app.rx.value.decoded.value);
-      } 
-      else
-      {
-        Serial.println(F("Not enought data in transmition"));
-
-        // Try to restart RX module
-        vw_rx_stop(); 
-        delay(1000);
-        vw_rx_start();      
-      }
-      digitalWrite(rxLed, LOW);
+  
+      // Try to restart RX module
+      man.stopReceive();
+      delay(1000);
+      man.setupReceive(rxPin);   
     }
-  }
-
+    
+    // Prepare Next Receiving
+    man.beginReceiveArray(6, _app.rx.raw);
+    
+    digitalWrite(rxLed, LOW);
+   }
 }
 
 
@@ -600,5 +590,42 @@ static int freeRam () {
 void displayFreeRam()
 {
   Serial.print(F("Free Ram = "));Serial.println(freeRam());
+}
+
+// This table comes from Dallas sample code where it is freely reusable,
+// though Copyright (C) 2000 Dallas Semiconductor Corporation
+static const uint8_t PROGMEM dscrc_table[] = {
+      0, 94,188,226, 97, 63,221,131,194,156,126, 32,163,253, 31, 65,
+    157,195, 33,127,252,162, 64, 30, 95,  1,227,189, 62, 96,130,220,
+     35,125,159,193, 66, 28,254,160,225,191, 93,  3,128,222, 60, 98,
+    190,224,  2, 92,223,129, 99, 61,124, 34,192,158, 29, 67,161,255,
+     70, 24,250,164, 39,121,155,197,132,218, 56,102,229,187, 89,  7,
+    219,133,103, 57,186,228,  6, 88, 25, 71,165,251,120, 38,196,154,
+    101, 59,217,135,  4, 90,184,230,167,249, 27, 69,198,152,122, 36,
+    248,166, 68, 26,153,199, 37,123, 58,100,134,216, 91,  5,231,185,
+    140,210, 48,110,237,179, 81, 15, 78, 16,242,172, 47,113,147,205,
+     17, 79,173,243,112, 46,204,146,211,141,111, 49,178,236, 14, 80,
+    175,241, 19, 77,206,144,114, 44,109, 51,209,143, 12, 82,176,238,
+     50,108,142,208, 83, 13,239,177,240,174, 76, 18,145,207, 45,115,
+    202,148,118, 40,171,245, 23, 73,  8, 86,180,234,105, 55,213,139,
+     87,  9,235,181, 54,104,138,212,149,203, 41,119,244,170, 72, 22,
+    233,183, 85, 11,136,214, 52,106, 43,117,151,201, 74, 20,246,168,
+    116, 42,200,150, 21, 75,169,247,182,232, 10, 84,215,137,107, 53};
+
+//
+// Compute a Dallas Semiconductor 8 bit CRC. These show up in the ROM
+// and the registers.  (note: this might better be done without to
+// table, it would probably be smaller and certainly fast enough
+// compared to all those delayMicrosecond() calls.  But I got
+// confused, so I use this table from the examples.)
+//
+uint8_t crc8(const uint8_t *addr, uint8_t len)
+{
+	uint8_t crc = 0;
+
+	while (len--) {
+		crc = pgm_read_byte(dscrc_table + (crc ^ *addr++));
+	}
+	return crc;
 }
 
