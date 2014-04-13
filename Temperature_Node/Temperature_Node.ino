@@ -40,7 +40,6 @@
 #define txPin 12  // TX Out
 #define sensPin 7  // Sensor Pin
 #define powerPin 8 // Power line for Tx module and sensor
-#define powerPin 14 // Power line for Tx module and sensor
 #endif
 
 #define WATCHDOG_TIMER WDTO_8S // 8 sec
