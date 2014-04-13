@@ -13,7 +13,7 @@
 #include <avr/sleep.h>
 
 #if defined(__AVR_ATtiny85__) // ATtiny85 mode
-#undef ECO // Low Power Mode
+#define ECO // Low Power Mode
 
 #define rxSerialPin 0  // RX PIN for Software Serial
 #define txSerialPin 1  // TX PIN for Software Serial (unused)
@@ -36,7 +36,7 @@
 #endif
 
 #define WATCHDOG_TIMER WDTO_8S // 8 sec
-#define SLEEP_LOOP  2 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
+#define SLEEP_LOOP  30 // Deep Sleep total time = WATCHDOG_TIMER * SLEEP_LOOP
 #define LINK_TIMEOUT  5000 // 5sec timeout
 
 #define sensID 5  // Sensor ID
@@ -50,16 +50,13 @@ typedef struct sensorData_t{
 
 typedef union sensorData_union_t{
   sensorData_t data;
-  uint8_t raw[6]; // total size of 5 bytes
+  uint8_t raw[6]; // total size of 6 bytes
 };
 
 // Sensor Message
 sensorData_union_t _message; 
 
-// EDF Link
-SoftwareSerial _edfLink(rxSerialPin, txSerialPin); // rx, tx pins
-
-// WatchDof Counter
+// WatchDog Counter
 volatile byte _watchdogCounter;
 
 // WatchDog interruption
@@ -100,21 +97,23 @@ void loop()
  */
 void getAndSendApparentPower()
 {
+  // EDF Link
+  SoftwareSerial edfLink(rxSerialPin, txSerialPin); // rx, tx pins
   boolean insideLine = false;
   char buffer[40];
   int lenght = 0; // Buffer pointer
-  uint32_t cpt = 0; // Loop Counter
 
   // Start Serial with EDF box
-  _edfLink.begin(1200);
+  edfLink.begin(1200);
   
+  // Start if the acquisition loop
   unsigned long beginSerial = millis();
   
   // Loop
   while (millis() - beginSerial < LINK_TIMEOUT)
   {
     // Read Serial
-    int current = _edfLink.read();
+    int current = edfLink.read();
 
     if(current < 0 )
     {
@@ -163,7 +162,7 @@ void getAndSendApparentPower()
           if(buffer[0]=='P' && buffer[1]=='A' && buffer[2]=='P' && buffer[3]=='P')
           {
             // Stop link interruption
-            _edfLink.end();
+            edfLink.end();
 
             // Remove CheckSum
             buffer[10] = '\0';
@@ -186,7 +185,7 @@ void getAndSendApparentPower()
         lenght = 0;
 
         // Clear Link
-        _edfLink.flush();
+        edfLink.flush();
       }
       else
       {
@@ -198,8 +197,6 @@ void getAndSendApparentPower()
         }
       }
     }
-    
-    cpt++;
   }
 }
 
@@ -208,7 +205,7 @@ void fireNewValueEvent(float value)
   // Save Power
   _message.data.value = value;
 
-  // Compute Checksum : CRC8 on ID+Value
+  // Compute Checksum : CRC8 on ID+Value (Checksum is computed on the first 5 bytes)
   _message.data.checksum = crc8(_message.raw, 5);
 
   // TX Setup
@@ -230,7 +227,7 @@ void powerDown()
   // Set all pin in INPUT mode
   //pinMode(powerPin, INPUT);
   pinMode(txPin, INPUT);
-  //pinMode(rxSerialPin, INPUT);
+  pinMode(rxSerialPin, INPUT);
   //pinMode(txSerialPin, INPUT);
 }
 
@@ -252,6 +249,9 @@ void deepSleep()
   // Prepare for shutdown
   
   //PCMSK = 0x00;   // Disable all PCInt Interrupts 
+  //GIMSK = 0x00; // Disable 
+  bitClear(GIMSK, PCIE); // Disable all PCInt Interrupts 
+
 
   bitClear(ADCSRA,ADEN); //Disable ADC
   //bitSet(PRR,PRADC); not working...
@@ -292,6 +292,10 @@ void deepSleep()
   // Restore Power
   PRR = 0x00; //Restore power reduction
   DIDR0 = 0x00; //Restore digital input buffers on all ADC0-ADC5 pins
+  
+  // Restore PCINT
+  bitSet(GIMSK, PCIE);
+  
 #endif
 }
 
