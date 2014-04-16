@@ -23,9 +23,7 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
-#define  ATtiny85 // ATtiny85 mode
-
-#ifdef ATtiny85
+#if defined(__AVR_ATtiny85__) // ATtiny85 mode
 #define ECO // Low Power Mode
 
 #define txLed 3  // TX LED
