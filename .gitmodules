@@ -4,3 +4,6 @@
 [submodule "libraries/ethercard"]
 	path = libraries/ethercard
 	url = https://github.com/jcw/ethercard.git
+[submodule "libraries/arduino-libs-manchester"]
+	path = libraries/arduino-libs-manchester
+	url = https://github.com/mchr3k/arduino-libs-manchester.git
