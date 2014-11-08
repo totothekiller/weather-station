@@ -1,0 +1,6 @@
+[submodule "libraries/Adafruit-BMP085-Library"]
+	path = libraries/Adafruit-BMP085-Library
+	url = https://github.com/adafruit/Adafruit-BMP085-Library.git
+[submodule "libraries/ethercard"]
+	path = libraries/ethercard
+	url = https://github.com/jcw/ethercard.git
