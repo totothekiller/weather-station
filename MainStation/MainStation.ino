@@ -50,7 +50,7 @@
 #define MAIN_SENSOR_UPDATE 240000
 
 // Timeout for HTTP Request
-#define HTTP_TIMEOUT 1000
+#define HTTP_TIMEOUT 2000
 
 // Touched
 CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin); 
@@ -59,35 +59,16 @@ CapacitiveSensor _touch = CapacitiveSensor(touchCommonPin,touchSensPin);
 Adafruit_BMP085 _mainSensor = Adafruit_BMP085();
 
 // MAC Address
-static byte _mymac[] = {0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
+static const byte _mymac[] = {0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
 
 // remote website ip address and port
-static byte _webserver[] = { 192, 168, 0, 1 };
+static const char _website[] PROGMEM = "http://www.example.com/";
 
-// Arduino IP
-static byte _arduinoIP[] = { 192, 168, 0, 42 };
-
-// gateway ip address
-static byte _gwip[] = { 192, 168, 0, 254 };
+// Remote URL
+static const char _baseURL[] PROGMEM = "/riot-server/points/add/";
 
 // Main Ethernet Buffer
-byte Ethernet::buffer[300];
-
-// Page to display to user
-char _indexHTML[] PROGMEM =
-  "HTTP/1.0 200 OK\r\n"
-  "Content-Type: text/html\r\n"
-  "\r\n"
-  "<html>"
-    "<head><title>"
-      "--- TTK Weather Station ---"
-    "</title></head>"
-    "<body>"
-      "<h3>I am the Weather Station</h3>"
-      "<p>Uptime is $D$D:$D$D:$D$D</p>"
-    "</body>"
-  "</html>"
-;
+byte Ethernet::buffer[600];
 
 // Sensor Defintion
 typedef struct SensorStruct {
@@ -197,18 +178,14 @@ void setup() {
   Serial.begin(57600);
   Serial.println(F("--- TTK Weather Station ---"));
   
-  // Set Up RX
-  man.setupReceive(rxPin);
-
   // Set Up LCD
   _app.render.lcd.begin (16,2); // 16x2 LCD
   _app.render.lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
   _app.render.lcd.setBacklight(HIGH);
   _app.render.lcd.clear();
   _app.render.lcd.print(F("--- Welcome ---"));
-
-  // Start Receiving
-  man.beginReceiveArray(6, _app.rx.raw);
+  _app.render.lcd.setCursor(0,1);
+  _app.render.lcd.print(F("waiting IP..."));
 
   // Initialise 
   if(!_mainSensor.begin())
@@ -223,26 +200,41 @@ void setup() {
   {
     Serial.println(F("Failed to access Ethernet controller"));
   }
-    
-  Serial.println(F("Setting up static IP"));
-
-  // Static IP
-  ether.staticSetup(_arduinoIP,_gwip);
-
-  ether.printIp(F("My IP: "), ether.myip);
-  //ether.printIp(F("Netmask: "), ether.mymask);
-  ether.printIp(F("GW IP: "), ether.gwip);
-  //ether.printIp(F("DNS IP: "), ether.dnsip);
   
-  // Set Up destination IP
-  ether.copyIp(ether.hisip, _webserver);
-  ether.printIp(F("Destination Server: "), ether.hisip);
-    
-  // Register Ping Callback
-  ether.registerPingCallback(pingCallback);
+  //
+  // Stop WatchDog during DHCP
+  wdt_disable();
+  
+  Serial.println(F("Setting up Dynamic IP"));
+
+  if (!ether.dhcpSetup())
+  {
+    Serial.println(F("DHCP failed"));
+  }
+  
+  ether.printIp(F("IP:  "), ether.myip);
+  ether.printIp(F("GW:  "), ether.gwip);  
+  ether.printIp(F("DNS: "), ether.dnsip);  
+
+  if (!ether.dnsLookup(_website))
+  {
+    Serial.println(F("DNS failed"));
+  }
+  
+  ether.printIp(F("SRV: "), ether.hisip);
   
   // No Request Yet
   _app.eth.isHttpRequest = false;
+  
+  //
+  // Re-Activate Watchdog
+  wdt_enable(WDTO_8S); // 8 sec
+  
+  // Set Up RX
+  man.setupReceive(rxPin);
+  
+  // Start Receiving
+  man.beginReceiveArray(6, _app.rx.raw);
   
   // Display Free RAM
   displayFreeRam();
@@ -267,7 +259,6 @@ void loop() {
 
   // Paint
   render();
-  
 }
 
 
@@ -334,9 +325,8 @@ void render()
    _app.render.paint = false;
   }
 
-
   // Increment
-  _app.render.tick++;
+  _app.render.tick++; // useless
 }
 
  
@@ -406,6 +396,15 @@ void checkIncomingData()
     
     digitalWrite(rxLed, LOW);
    }
+   else
+   {
+    // If no message found
+   
+    // After some time
+    // reset then restart reveiving 
+    
+    //Serial.print(F("RF State = "));Serial.println(rx_mode);
+   }
 }
 
 
@@ -456,19 +455,17 @@ static void updateLocalSensors()
 
     _app.lastMainSensorUpdated = currentTime;
 
-    float buffer;
-
     // Read Temp sensor
-    _mainSensor.getTemperature(&buffer);
+    float temp = _mainSensor.readTemperature();
 
     // Notify new Value
-    fireNewSensorValue(1,buffer);
+    fireNewSensorValue(1, temp);
 
     // Read Pressure sensor (in Pa)
-    _mainSensor.getPressure(&buffer);
+    float pressure = (float) _mainSensor.readPressure();
 
     // Notify new Value (in hPa)
-    fireNewSensorValue(2,buffer/100);
+    fireNewSensorValue(2, pressure/100.0);
   }
 }
 
@@ -481,34 +478,11 @@ void checkEthernet()
   // check if anything has come in via ethernet
   word len = ether.packetReceive();
   word pos = ether.packetLoop(len);
-  
-  // check if valid tcp data is received
-  if (pos) {
-    
-    // Init Buffer
-    _app.eth.buffer = ether.tcpOffset();
-
-    char* data = (char *) Ethernet::buffer + pos;
-    Serial.println(F("Ethernet data received :"));
-    Serial.println(data);
-    
-    // UpTime
-    long t = millis() / 1000;
-    word h = t / 3600;
-    byte m = (t / 60) % 60;
-    byte s = t % 60;
-    
-    // Populate Page to Buffer
-    _app.eth.buffer.emit_p(_indexHTML, h/10, h%10, m/10, m%10, s/10, s%10);
-        
-    // send web page data
-    ether.httpServerReply(_app.eth.buffer.position()); 
-  }
 }
 
 
 //
-// Send Data to WebServer
+// Send Data to WebServer : sensorID/newValue
 //
 void sendDataToWebServer(byte sensorID, float newValue)
 {
@@ -519,15 +493,17 @@ void sendDataToWebServer(byte sensorID, float newValue)
   char newValueString[10];
   dtostrf(newValue, 2, 2, newValueString);
   
+  // Concat
   strcat(_app.eth.url,newValueString);
   
-  Serial.print(F("Begin HTTP Request = "));Serial.println(_app.eth.url);
+  Serial.print(F(">>> HTTP Request : "));Serial.println(_app.eth.url);
   
   // Init Request
   _app.eth.isHttpRequest = true;
-  unsigned long dateHTTPrequest = millis();
+  const unsigned long dateHTTPrequest = millis();
   
-  ether.browseUrl(PSTR("/riot-server/points/add/"), _app.eth.url, PSTR("localhost"), requestUrlCallback);
+  // Send Request  
+  ether.browseUrl(_baseURL, _app.eth.url, _website, requestUrlCallback);  
   
   //
   // Wait end of HTTP Request
@@ -535,18 +511,14 @@ void sendDataToWebServer(byte sensorID, float newValue)
   {
     ether.packetLoop(ether.packetReceive());
   }
-  
+   
   // Verify
   if(_app.eth.isHttpRequest)
   {
-    Serial.println(F("Fail Of HTTP Request"));
-    
+    Serial.println(F("Fail Of HTTP Request !"));
+     
     // Reset Flag
     _app.eth.isHttpRequest = false;
-  }
-  else
-  {
-    Serial.println(F("End Of HTTP Request"));
   }
   
   // Workaround to clean Ethernet ...
@@ -554,22 +526,18 @@ void sendDataToWebServer(byte sensorID, float newValue)
   {
     ether.packetLoop(ether.packetReceive());
   }
-  
-}
-
-
-//
-// Ping Callback
-//
-static void pingCallback (byte* ptr) {
-  ether.printIp(">>> ping from: ", ptr);
 }
 
 // 
 // End HTTP GET request Callback
 //
 static void requestUrlCallback (byte status, word off, word len) {
-  Serial.println("<<< reply ");
+  Serial.println(F("<<< RESPONSE :"));
+  
+  // Set end of String (for correct display in println)
+  Ethernet::buffer[min(599, off + len)] = 0;
+  
+  // Display response
   Serial.println((const char*) Ethernet::buffer + off);
   
   // Turn off HTTP request flag
