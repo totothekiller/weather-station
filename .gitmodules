@@ -10,3 +10,6 @@
 [submodule "libraries/DHT-sensor-library"]
 	path = libraries/DHT-sensor-library
 	url = git@github.com:adafruit/DHT-sensor-library.git
+[submodule "libraries/OneWire"]
+	path = libraries/OneWire
+	url = git@github.com:PaulStoffregen/OneWire.git
