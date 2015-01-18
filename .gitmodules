@@ -7,3 +7,6 @@
 [submodule "libraries/arduino-libs-manchester"]
 	path = libraries/arduino-libs-manchester
 	url = https://github.com/mchr3k/arduino-libs-manchester.git
+[submodule "libraries/DHT-sensor-library"]
+	path = libraries/DHT-sensor-library
+	url = git@github.com:adafruit/DHT-sensor-library.git
