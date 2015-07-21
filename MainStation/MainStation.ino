@@ -62,7 +62,7 @@ Adafruit_BMP085 _mainSensor = Adafruit_BMP085();
 static const byte _mymac[] = {0x74, 0x69, 0x69, 0x2D, 0x30, 0x31 };
 
 // remote website ip address and port
-static const char _website[] PROGMEM = "http://www.example.com/";
+static const char _website[] PROGMEM = "example.com";
 
 // Remote URL
 static const char _baseURL[] PROGMEM = "/riot-server/points/add/";
@@ -507,7 +507,7 @@ void sendDataToWebServer(byte sensorID, float newValue)
   
   //
   // Wait end of HTTP Request
-  while(millis() - dateHTTPrequest < HTTP_TIMEOUT && ( _app.eth.isHttpRequest || ether.clientWaitingGw() ))
+  while(millis() - dateHTTPrequest < HTTP_TIMEOUT && _app.eth.isHttpRequest )
   {
     ether.packetLoop(ether.packetReceive());
   }
@@ -522,7 +522,8 @@ void sendDataToWebServer(byte sensorID, float newValue)
   }
   
   // Workaround to clean Ethernet ...
-  for(int i=0;i<100;i++)
+  const unsigned long dateHTTPend = millis();
+  while(millis() - dateHTTPend < HTTP_TIMEOUT)
   {
     ether.packetLoop(ether.packetReceive());
   }
