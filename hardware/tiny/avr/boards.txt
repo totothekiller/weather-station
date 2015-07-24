@@ -2,10 +2,10 @@
 
 attiny85at8e.name=ATtiny85 @ 8 MHz  (external crystal; 2.7 V BOD)
 
-attiny85at8.upload.tool=arduino:arduinoisp
+attiny85at8e.upload.tool=arduino:arduinoisp
 
-attiny85at8.upload.maximum_size=8192
-attiny85at8.upload.maximum_data_size=512
+attiny85at8e.upload.maximum_size=8192
+attiny85at8e.upload.maximum_data_size=512
 
 # Ext. Crystal Osc.; Frequency 8.0- MHz; Start-up time PWRDWN/RESET: 16K CK/14 CK + 65 ms; [CKSEL=1111 SUT=11]
 # Brown-out detection level at VCC=2.7 V; [BODLEVEL=101]
@@ -16,9 +16,9 @@ attiny85at8e.bootloader.low_fuses=0xFF
 attiny85at8e.bootloader.high_fuses=0xD5
 attiny85at8e.bootloader.extended_fuses=0xFF
 
-attiny85at8.bootloader.path=empty
-attiny85at8.bootloader.file=empty85at8.hex
-attiny85at8.bootloader.tool=arduino:avrdude
+attiny85at8e.bootloader.path=empty
+attiny85at8e.bootloader.file=empty85at8.hex
+attiny85at8e.bootloader.tool=arduino:avrdude
 
 attiny85at8e.build.mcu=attiny85
 attiny85at8e.build.f_cpu=8000000L
@@ -26,3 +26,27 @@ attiny85at8e.build.core=tiny
 
 
 ###########################################################################
+
+attiny85at8.name=ATtiny85 @ 8 MHz  (external crystal)
+
+attiny85at8.upload.tool=arduino:arduinoisp
+
+attiny85at8.upload.maximum_size=8192
+attiny85at8.upload.maximum_data_size=512
+
+# Ext. Crystal Osc.; Frequency 8.0- MHz; Start-up time PWRDWN/RESET: 16K CK/14 CK + 65 ms; [CKSEL=1111 SUT=11]
+# Brown-out detection Disabled; [BODLEVEL=111]
+# Preserve EEPROM memory through the Chip Erase cycle; [EESAVE=0]
+# Serial program downloading (SPI) enabled; [SPIEN=0]
+
+attiny85at8.bootloader.low_fuses=0xFF
+attiny85at8.bootloader.high_fuses=0xD7
+attiny85at8.bootloader.extended_fuses=0xFF
+
+attiny85at8.bootloader.path=empty
+attiny85at8.bootloader.file=empty85at8.hex
+attiny85at8.bootloader.tool=arduino:avrdude
+
+attiny85at8.build.mcu=attiny85
+attiny85at8.build.f_cpu=8000000L
+attiny85at8.build.core=tiny
