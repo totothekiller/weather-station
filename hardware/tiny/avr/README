@@ -20,11 +20,11 @@ Next...
 
 * Download the Arduino-Tiny archive (ZIP-file).
 
-* Locate the Arduino Sketch folder.  This is the folder where the Arduino IDE
-  stores Sketches.
+* Locate the Arduino Sketchbook folder.  This is the folder where the Arduino 
+  IDE stores Sketches.
 
-* Ensure the "hardware" folder exists under the Arduino Sketch folder.  For
-  example, if the Arduino Sketch folder is...
+* Ensure the "hardware" folder exists under the Arduino Sketchbook folder.  For
+  example, if the Arduino Sketchbook folder is...
 
       C:\Projects\Arduino\
 
@@ -33,36 +33,28 @@ Next...
       C:\Projects\Arduino\hardware\
 
 * Extract the contents of the archive into the "hardware" folder.  For example,
-  if the Arduino Sketch folder is...
+  if the Arduino Sketchbook folder is...
 
       C:\Projects\Arduino
 
-  After extracting, the following files should exist...
+  After extracting, the following files / folders should exist...
 
-      C:\Projects\Arduino\hardware\tiny\boards.txt
-      C:\Projects\Arduino\hardware\tiny\programmers.txt
+      C:\Projects\Arduino\hardware\tiny\avr\license.txt
+      C:\Projects\Arduino\hardware\tiny\avr\platform.txt
+      C:\Projects\Arduino\hardware\tiny\avr\Prospective Boards.txt
+      C:\Projects\Arduino\hardware\tiny\avr\README
+      C:\Projects\Arduino\hardware\tiny\avr\bootloaders\
+      C:\Projects\Arduino\hardware\tiny\avr\cores\
 
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty2313at1.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty2313at8.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty25at1.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty25at8.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty45at1.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty45at8.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty84at1.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty84at16.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty84at8.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty85at1.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty85at16.hex
-      C:\Projects\Arduino\hardware\tiny\bootloaders\empty\empty85at8.hex
+  The following folder should contain the source files for the Arduino-Tiny
+  core...
 
-  And the following folder should contain the Arduino-Tiny core...
+      C:\Projects\Arduino\hardware\tiny\avr\cores\tiny\
 
-      C:\Projects\Arduino\hardware\tiny\cores\tiny\
+* Create a new file named "boards.txt" in the tiny\avr directory.  Following 
+  from the examples above, the file would be here...
 
-* Create a new file named "boards.txt" in the tiny directory.  Following from
-  the examples above, the file would be here...
-
-      C:\Projects\Arduino\hardware\tiny\boards.txt
+      C:\Projects\Arduino\hardware\tiny\avr\boards.txt
 
 * Open the "boards.txt" file and the "Prospective Boards.txt" file using your
   favourite text editor.
@@ -71,7 +63,7 @@ Next...
   (or copy the entire contents of "Prospective Boards.txt" to "boards.txt").
   Board entries are delineated by a long line of pound-signs.
 
-* In the "boards.txt" file, change the "upload.using" entries to the
+* In the "boards.txt" file, change the "upload.tool" entries to the
   appropriate value for your setup.
 
 * Save and close "boards.txt".  Close "Prospective Boards.txt".
