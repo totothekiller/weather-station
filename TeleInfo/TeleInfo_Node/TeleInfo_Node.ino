@@ -82,11 +82,19 @@ void setup() {
 
 void loop()
 {
+  //
+  // First Activate Watchdog
+  wdt_enable(WDTO_8S); // 8 sec
+  
   // Acquire And Send Apparent Power  
   getAndSendApparentPower();
 
   // Power Off
   powerDown();
+
+  //
+  // Stop WatchDog
+  wdt_disable();
 
   // Go to Sleep Mode Zzzzz
   deepSleep();
@@ -114,6 +122,9 @@ void getAndSendApparentPower()
   {
     // Read Serial
     int current = edfLink.read();
+
+    // Restart Watchdog
+    wdt_reset();
 
     if(current < 0 )
     {
@@ -202,6 +213,9 @@ void getAndSendApparentPower()
 
 void fireNewValueEvent(float value)
 {
+  // Restart Watchdog
+  wdt_reset();
+  
   // Save Power
   _message.data.value = value;
 
